@@ -1,67 +1,81 @@
 import time
 import random
+import threading
+import hashlib
+from typing import List
 
-def add_document(self, doc_content: str) -> bool:
-        """
-        Returns True if added to queue, False if duplicate.
-        """
-        index = self._get_hash_index(doc_content)
-        
-        with self.lock:
-            # Check 1: Is the bit already set?
-            if self.bit_array[index] == 1:
-                print(f"[Duplicate] Skipped: {doc_content}")
-                return False  # <--- EXIT IMMEDIATELY
-            
-            # Action 1: Mark as seen (Set the bit)
-            self.bit_array[index] = 1 # <--- CRITICAL STEP YOU MISSED
-            
-            # Action 2: Add to queue
-            self.processing_queue.append(doc_content)
-            
-            print(f"[Success] Added: {doc_content}")
-            return True
-
+# 1. The Decorator
 def retry_with_backoff(retries=3, initial_delay=1):
-    """
-    Decorator that retries a function with exponential backoff.
-    """
     def decorator(func):
         def wrapper(*args, **kwargs):
             delay = initial_delay
-            
-            # TODO: Write a loop that runs 'retries' times
             for attempt in range(retries):
                 try:
                     return func(*args, **kwargs)
-                    
                 except Exception as e:
-                    print(f"Attempt {attempt + 1} failed: {e}")
-                    
-                    # TODO 2: If this was the last attempt, raise the error (Don't silence it!)
+                    print(f"   -> [Retry System] Attempt {attempt + 1} failed: {e}")
                     if attempt == retries - 1:
-                        print("All retries exhausted.")
-                        raise e
-                    
-                    # TODO 3: Sleep for 'delay' seconds
+                        raise e 
                     time.sleep(delay)
-                    
-                    # TODO 4: Double the delay (Exponential Backoff)
                     delay *= 2
-                    
         return wrapper
     return decorator
 
-# --- HOW WE USE IT ---
-@retry_with_backoff(retries=3, initial_delay=1)
-def push_to_db(doc):
-    # Simulate a random crash 70% of the time
-    if random.random() < 0.7:
-        raise ConnectionError("DB is down!")
-    print(f"Document {doc} saved to DB!")
+# 2. The Class
+class StreamIngestor:
+    def __init__(self, size: int = 1000):
+        self.bit_array = [0] * size
+        self.size = size
+        self.lock = threading.Lock()
+        self.processing_queue: List[str] = []
 
-# Test it
+    def _get_hash_index(self, item: str) -> int:
+        hex_val = hashlib.sha256(item.encode('utf-8')).hexdigest()
+        return int(hex_val, 16) % self.size
+
+    def add_document(self, doc_content: str) -> bool:
+        index = self._get_hash_index(doc_content)
+        with self.lock:
+            if self.bit_array[index] == 1:
+                print(f"[Ingestor] Duplicate skipped: '{doc_content}'")
+                return False
+            self.bit_array[index] = 1
+            self.processing_queue.append(doc_content)
+            print(f"[Ingestor] Added to queue: '{doc_content}'")
+            return True
+
+    # 3. The "Unstable" Database Connector
+    @retry_with_backoff(retries=3, initial_delay=0.5)
+    def flush_to_db(self):
+        """Takes items from queue and saves to DB. Fails randomly."""
+        if not self.processing_queue:
+            print("[DB] Queue is empty.")
+            return
+        
+        # Simulate taking a batch
+        item = self.processing_queue[0]
+        
+        # Simulate 60% chance of DB crash
+        if random.random() < 0.6:
+            raise ConnectionError("Database Connection Timeout")
+        
+        # Success
+        print(f"[DB] Successfully saved: '{item}'")
+        self.processing_queue.pop(0)
+
+# --- EXECUTION ---
+print("--- STARTING NEUROSEARCH INGESTION ---")
+system = StreamIngestor()
+
+# 1. Ingest Data (Mixed Duplicates)
+system.add_document("User_Agreement_v1.pdf")
+system.add_document("User_Agreement_v1.pdf") # Duplicate
+system.add_document("Invoice_2024.pdf")
+
+# 2. Try to flush to DB (Will trigger Retries)
+print("\n--- FLUSHING TO DB (With Retry Logic) ---")
 try:
-    push_to_db("Contract_v1.pdf")
-except Exception:
-    print("Final failure after retries.")
+    system.flush_to_db() # Should succeed eventually or fail after 3 tries
+    system.flush_to_db() # Process next item
+except Exception as e:
+    print(f"CRITICAL SYSTEM FAILURE: {e}")
