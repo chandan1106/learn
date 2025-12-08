@@ -33,18 +33,21 @@ def retry_with_backoff(retries=3, initial_delay=1):
             # TODO: Write a loop that runs 'retries' times
             for attempt in range(retries):
                 try:
-                    # TODO 1: Call the original function 'func' with args and kwargs
-                    # If successful, return the result immediately.
-                    pass # Remove this pass
+                    return func(*args, **kwargs)
                     
                 except Exception as e:
                     print(f"Attempt {attempt + 1} failed: {e}")
                     
                     # TODO 2: If this was the last attempt, raise the error (Don't silence it!)
+                    if attempt == retries - 1:
+                        print("All retries exhausted.")
+                        raise e
                     
                     # TODO 3: Sleep for 'delay' seconds
+                    time.sleep(delay)
                     
                     # TODO 4: Double the delay (Exponential Backoff)
+                    delay *= 2
                     
         return wrapper
     return decorator
