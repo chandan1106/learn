@@ -48,7 +48,7 @@ n_items = len(doc_tokens)
 max_relevance = knapsack_memo(n_items, MAX_TOKENS)
 
 print(f"\n MAXIMUM RELEVANCE SCORE POSSIBLE: {max_relevance}")
-
+    
 # For verification:
 # One optimal combo for 50 capacity:
 # 20 tokens (100 score) + 10 tokens (60 score) + 15 tokens (90 score) + 5 tokens (30 score)
